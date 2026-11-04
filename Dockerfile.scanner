@@ -10,9 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY scanner/ requirements.txt /build/
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt \
-    && pip install --no-cache-dir --prefix=/install gitleaks-py trivy-py || true
+COPY requirements.txt /build/
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Production Minimal Stage
 FROM python:3.12-slim-bookworm

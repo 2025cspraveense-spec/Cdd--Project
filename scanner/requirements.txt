@@ -1,0 +1,28 @@
+# ==============================================================================
+# Secret Leak Guard - Universal DevSecOps Security Scanner & Runtime
+# ==============================================================================
+
+# Core Web & API Framework
+Flask>=3.0.0
+flask-cors>=4.0.0
+gunicorn>=21.2.0
+python-dotenv>=1.0.0
+
+# Database & Vault Secret Orchestration
+pymongo>=4.6.0
+hvac>=2.0.0
+PyJWT>=2.8.0
+cryptography>=42.0.0
+
+# HTTP & Security Auditing
+requests>=2.31.0
+
+# Report Generation (Vector PDF)
+reportlab>=4.0.0
+
+# DevSecOps Scanners & Linters
+bandit>=1.7.5
+pip-audit>=2.6.0
+
+# Testing & Quality Assurance
+pytest>=8.0.0
