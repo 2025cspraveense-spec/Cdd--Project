@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+
+# Secrets and Sensitive Environment Files (CRITICAL - SHIFT LEFT DEFENSE)
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.pfx
+
+# Test reports and temporary scan artifacts
+reports/*.json
+!reports/.gitkeep
+trivy-secret-report.json
+gitleaks-report.json
+
+# Local Vault storage data
+vault/data/
+.vault-token
