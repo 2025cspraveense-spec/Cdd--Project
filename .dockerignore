@@ -1,0 +1,8 @@
+# Git repository data
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
