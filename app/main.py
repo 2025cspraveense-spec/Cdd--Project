@@ -147,6 +147,14 @@ HTML_TEMPLATE = """
             border-bottom: 1px solid var(--border);
             padding-bottom: 10px;
         }
+        p {
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+        ul {
+            padding-left: 20px;
+            line-height: 1.8;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -261,6 +269,7 @@ def secrets_status():
     return jsonify(posture)
 
 @app.route("/api/secrets/rotation-status")
+@app.route("/api/secrets/rotation")
 def secrets_rotation_status():
     """Returns secret expiration and rotation compliance metrics."""
     rotation_info = config.get_rotation_status()
@@ -274,33 +283,30 @@ def secrets_rotation_status():
 
 @app.route("/api/data", methods=["GET"])
 def protected_data():
-    """Protected endpoint requiring project API token."""
-    auth_header = request.headers.get("Authorization", "")
-    api_key_header = request.headers.get("X-API-Key", "")
-    expected_token = config.slg_project_token
+    """Simulates an API endpoint requiring configured secrets."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning("Unauthorized access attempt to /api/data without Bearer token")
+        return jsonify({"error": "Missing or malformed Authorization header"}), 401
 
-    if not expected_token:
-        return jsonify({"error": "SLG_PROJECT_API_TOKEN is not configured on server"}), 500
+    token = auth_header.split(" ", 1)[1]
+    if token != config.project_api_token:
+        # Safe log: masks the token so it does not appear in plaintext in log aggregator
+        logger.warning("Forbidden access attempt using invalid token: %s", mask_secret(token))
+        return jsonify({"error": "Invalid API token"}), 403
 
-    token = None
-    if auth_header.startswith("Bearer "):
-        token = auth_header.split(" ", 1)[1]
-    elif api_key_header:
-        token = api_key_header
-
-    if not token or token != expected_token:
-        logger.warning("Unauthorized access attempt from %s with token: %s", request.remote_addr, mask_secret(token))
-        return jsonify({"error": "Unauthorized. Invalid or missing API token."}), 401
-
-    logger.info("Authorized access granted for token: %s", mask_secret(token))
+    logger.info("Authorized access to /api/data")
     return jsonify({
-        "message": "Secure payload retrieved successfully.",
+        "message": "Access granted to secure transaction records.",
+        "storage": "encrypted_vault",
         "records": [
-            {"id": 1, "description": "Customer Payment Batch A", "status": "processed"},
-            {"id": 2, "description": "Customer Payment Batch B", "status": "verified"}
+            {"id": "tx_1001", "status": "settled", "amount_usd": 420.50},
+            {"id": "tx_1002", "status": "pending", "amount_usd": 1280.00}
         ]
     })
 
+
 if __name__ == "__main__":
-    logger.info("Starting Secret Leak Guard app on port %d...", config.port)
-    app.run(host="0.0.0.0", port=config.port, debug=False)
+    logger.info("Starting Secret Leak Guard application on port %d...", config.port)
+    rotation_monitor.start()
+    app.run(host="0.0.0.0", port=config.port, debug=config.is_development)
