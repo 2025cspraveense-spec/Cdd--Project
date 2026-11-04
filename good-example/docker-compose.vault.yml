@@ -2,20 +2,20 @@ version: "3.8"
 
 services:
   vault:
-    image: hashicorp/vault:1.15.6
+    image: hashicorp/vault:1.15
     container_name: slg-vault
     ports:
       - "8200:8200"
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: "root"
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-    cap_add:
-      - IPC_LOCK
+      VAULT_ADDR: "http://127.0.0.1:8200"
     healthcheck:
-      test: ["CMD", "vault", "status"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8200/v1/sys/health || vault status -address=http://127.0.0.1:8200 || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 5
+      start_period: 5s
 
   app:
     build:
