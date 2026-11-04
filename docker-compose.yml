@@ -1,6 +1,30 @@
 version: "3.8"
 
 services:
+  # ============================================================================
+  # MongoDB Database Service (Pinned Version: 7.0)
+  # ============================================================================
+  mongo:
+    image: mongo:7.0
+    container_name: slg-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: secret_leak_guard
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ping: 1})"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - slg-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # HashiCorp Vault Service (Pinned Version: 1.15.6)
+  # ============================================================================
   vault:
     image: hashicorp/vault:1.15.6
     container_name: slg-vault
@@ -19,6 +43,34 @@ services:
     networks:
       - slg-network
 
+  # ============================================================================
+  # Universal Security Scanner Service (Port 5050)
+  # ============================================================================
+  scanner-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.scanner
+    image: secret-leak-guard-scanner:2.0.0
+    container_name: slg-scanner-api
+    ports:
+      - "5050:5050"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    environment:
+      - SCANNER_PORT=5050
+      - MONGO_URI=mongodb://mongo:27017/secret_leak_guard
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=root
+    networks:
+      - slg-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Application Demo Service (Preserved)
+  # ============================================================================
   app:
     build:
       context: .
@@ -39,6 +91,9 @@ services:
     networks:
       - slg-network
     restart: unless-stopped
+
+volumes:
+  mongo-data:
 
 networks:
   slg-network:
