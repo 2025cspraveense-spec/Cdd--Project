@@ -1,0 +1,30 @@
+# ❌ BAD DOCKERFILE ANTI-PATTERN DEMO
+# DO NOT USE IN PRODUCTION!
+# Demonstrates 3 major secret leakage flaws scanned by Trivy
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ❌ FLAW 1: Baking secrets into image layers via ENV directives
+# Anyone with access to the container image can inspect these using:
+#   docker inspect <image_name>
+#   docker history <image_name>
+ENV AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
+ENV AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+ENV DATABASE_PASSWORD="SuperSecretP@ssw0rd2024!"
+ENV SLG_PROJECT_API_TOKEN="SLG_demo_9876543210abcdef9876543210abcdef"
+
+COPY app/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ❌ FLAW 2: Copying sensitive .env files directly into the container image
+# Even if deleted in a subsequent RUN layer, intermediate layers still retain it!
+COPY bad-example/.env.bad /app/.env
+
+# ❌ FLAW 3: Copying code containing hardcoded credentials
+COPY bad-example/leaked_secrets.py /app/app.py
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
