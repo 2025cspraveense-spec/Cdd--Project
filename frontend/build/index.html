@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secret Leak Guard — Universal DevSecOps Security Scanner</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.4/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --accent: #38bdf8;
+      --text: #f9fafb;
+    }
+    body { background-color: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; }
+    .card { background-color: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+    .nav-tabs .nav-link { color: #9ca3af; border: none; }
+    .nav-tabs .nav-link.active { background: transparent; color: var(--accent); border-bottom: 2px solid var(--accent); font-weight: bold; }
+    .badge-critical { background-color: #ef4444; color: white; }
+    .badge-high { background-color: #f97316; color: white; }
+    .badge-medium { background-color: #eab308; color: black; }
+    .badge-low { background-color: #06b6d4; color: black; }
+    .table-dark { --bs-table-bg: var(--card-bg); --bs-table-border-color: var(--border); }
+    pre.code-evidence {
+      background-color: #090d16;
+      border: 1px solid #1f2937;
+      color: #38bdf8;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background-color: #1e293b !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    function App() {
+      const [metrics, setMetrics] = useState(null);
+      const [dbMode, setDbMode] = useState('MongoDB');
+      const [scans, setScans] = useState([]);
+      const [selectedScan, setSelectedScan] = useState(null);
+      const [findings, setFindings] = useState([]);
+      const [filteredFindings, setFilteredFindings] = useState([]);
+      const [activeStatus, setActiveStatus] = useState(null);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [severityFilter, setSeverityFilter] = useState('ALL');
+      const [categoryFilter, setCategoryFilter] = useState('ALL');
+      const [modalFinding, setModalFinding] = useState(null);
+
+      // Ingestion state
+      const [activeTab, setActiveTab] = useState('local');
+      const [localPath, setLocalPath] = useState('');
+      const [localProj, setLocalProj] = useState('');
+      const [uploadFile, setUploadFile] = useState(null);
+      const [uploadProj, setUploadProj] = useState('');
+      const [githubUrl, setGithubUrl] = useState('');
+      const [githubBranch, setGithubBranch] = useState('');
+      const [dockerContent, setDockerContent] = useState('');
+      const [scanHistory, setScanHistory] = useState(false);
+      const [loading, setLoading] = useState(false);
+      const [alertMsg, setAlertMsg] = useState(null);
+
+      // Chart references
+      const sevChartRef = useRef(null);
+      const catChartRef = useRef(null);
+      const sevChartInstance = useRef(null);
+      const catChartInstance = useRef(null);
+
+      const loadDashboard = async () => {
+        try {
+          const hRes = await fetch('/api/v1/health');
+          const hData = await hRes.json();
+          setDbMode(hData.database ? hData.database.mode : 'MongoDB');
+
+          const mRes = await fetch('/api/v1/dashboard/metrics');
+          const mData = await mRes.json();
+          setMetrics(mData);
+
+          if (mData.recent_scans && mData.recent_scans.length > 0) {
+            setScans(mData.recent_scans);
+            if (!selectedScan) {
+              selectScan(mData.recent_scans[0].scan_id);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading dashboard:', err);
+        }
+      };
+
+      const selectScan = async (scanId) => {
+        try {
+          const res = await fetch(`/api/v1/scans/${scanId}/results`);
+          const data = await res.json();
+          setSelectedScan(data);
+          setFindings(data.findings || []);
+          setFilteredFindings(data.findings || []);
+        } catch (err) {
+          console.error('Error fetching scan results:', err);
+        }
+      };
+
+      // Filter findings whenever search or dropdowns change
+      useEffect(() => {
+        let res = findings;
+        if (severityFilter !== 'ALL') {
+          res = res.filter(f => f.severity === severityFilter);
+        }
+        if (categoryFilter !== 'ALL') {
+          res = res.filter(f => f.category === categoryFilter);
+        }
+        if (searchTerm.trim()) {
+          const q = searchTerm.toLowerCase();
+          res = res.filter(f =>
+            f.title.toLowerCase().includes(q) ||
+            f.file_path.toLowerCase().includes(q) ||
+            (f.description && f.description.toLowerCase().includes(q)) ||
+            (f.cwe && f.cwe.toLowerCase().includes(q))
+          );
+        }
+        setFilteredFindings(res);
+      }, [searchTerm, severityFilter, categoryFilter, findings]);
+
+      // Render Charts
+      useEffect(() => {
+        if (!metrics) return;
+
+        // 1. Severity Doughnut Chart
+        if (sevChartRef.current) {
+          if (sevChartInstance.current) sevChartInstance.current.destroy();
+          const sev = metrics.severity_distribution || {};
+          sevChartInstance.current = new Chart(sevChartRef.current, {
+            type: 'doughnut',
+            data: {
+              labels: ['Critical', 'High', 'Medium', 'Low'],
+              datasets: [{
+                data: [sev.critical || 0, sev.high || 0, sev.medium || 0, sev.low || 0],
+                backgroundColor: ['#ef4444', '#f97316', '#eab308', '#06b6d4'],
+                borderWidth: 0,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'right', labels: { color: '#f9fafb' } } },
+            },
+          });
+        }
+
+        // 2. Category Bar Chart
+        if (catChartRef.current) {
+          if (catChartInstance.current) catChartInstance.current.destroy();
+          const cat = metrics.category_distribution || {};
+          catChartInstance.current = new Chart(catChartRef.current, {
+            type: 'bar',
+            data: {
+              labels: ['Secrets', 'SAST Code', 'Dependencies', 'Docker'],
+              datasets: [{
+                label: 'Vulnerabilities',
+                data: [cat.secrets || 0, cat.sast || 0, cat.dependencies || 0, cat.docker || 0],
+                backgroundColor: '#38bdf8',
+                borderRadius: 6,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+                x: { ticks: { color: '#9ca3af' }, grid: { color: 'transparent' } },
+              },
+              plugins: { legend: { display: false } },
+            },
+          });
+        }
+      }, [metrics]);
+
+      const pollScanProgress = (scanId) => {
+        const timer = setInterval(async () => {
+          try {
+            const res = await fetch(`/api/v1/scans/${scanId}/status`);
+            const s = await res.json();
+            setActiveStatus(s);
+            if (s.status === 'COMPLETED' || s.status === 'FAILED') {
+              clearInterval(timer);
+              loadDashboard();
+              selectScan(scanId);
+              setLoading(false);
+              setAlertMsg({
+                type: s.status === 'COMPLETED' ? 'success' : 'danger',
+                text: s.status === 'COMPLETED'
+                  ? `Scan Completed: Grade ${s.security_grade} (${s.risk_score}/100) with ${s.summary ? s.summary.total_findings : 0} findings.`
+                  : `Scan Failed: ${s.error_message}`,
+              });
+            }
+          } catch (e) {
+            clearInterval(timer);
+            setLoading(false);
+          }
+        }, 1500);
+      };
+
+      const handleScanSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setAlertMsg({ type: 'info', text: 'Submitting scan job to sandbox orchestrator...' });
+
+        try {
+          let res, data;
+          if (activeTab === 'local') {
+            if (!localPath) throw new Error('Please enter local folder path');
+            res = await fetch('/api/v1/scans/local', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: localPath, project_name: localProj || undefined, scan_history: scanHistory }),
+            });
+          } else if (activeTab === 'upload') {
+            if (!uploadFile) throw new Error('Please select a file to upload');
+            const fd = new FormData();
+            fd.append('file', uploadFile);
+            if (uploadProj) fd.append('project_name', uploadProj);
+            fd.append('scan_history', scanHistory ? 'true' : 'false');
+            res = await fetch('/api/v1/scans/upload', { method: 'POST', body: fd });
+          } else if (activeTab === 'github') {
+            if (!githubUrl) throw new Error('Please enter repository URL');
+            res = await fetch('/api/v1/scans/github', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ repo_url: githubUrl, branch: githubBranch || undefined, scan_history: scanHistory }),
+            });
+          } else if (activeTab === 'docker') {
+            if (!dockerContent) throw new Error('Please enter Dockerfile content');
+            res = await fetch('/api/v1/scans/docker', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dockerfile_content: dockerContent }),
+            });
+          }
+
+          data = await res.json();
+          if (res.ok && data.scan_id) {
+            pollScanProgress(data.scan_id);
+          } else {
+            throw new Error(data.error || 'Failed to submit scan');
+          }
+        } catch (err) {
+          setLoading(false);
+          setAlertMsg({ type: 'danger', text: err.message });
+        }
+      };
+
+      useEffect(() => {
+        loadDashboard();
+      }, []);
+
+      const m = metrics || {};
+      const sev = m.severity_distribution || {};
+      const cat = m.category_distribution || {};
+
+      return (
+        <div style={{ minHeight: '100vh', backgroundColor: '#0b0f19' }}>
+          {/* Top Navbar */}
+          <nav className="navbar navbar-dark border-bottom border-secondary px-4 py-3" style={{ backgroundColor: '#0f172a' }}>
+            <div className="d-flex align-items-center gap-3">
+              <i className="bi bi-shield-lock-fill text-info fs-3"></i>
+              <div>
+                <h5 className="mb-0 fw-bold text-white">Secret Leak Guard</h5>
+                <small className="text-secondary">Universal Source Code Security Scanner (Gitleaks, Semgrep, Trivy, OSV)</small>
+              </div>
+            </div>
+            <div className="d-flex align-items-center gap-3">
+              <span className="badge bg-success py-2 px-3">
+                <i className="bi bi-database-check me-1"></i> {dbMode}
+              </span>
+              <button className="btn btn-outline-info btn-sm" onClick={loadDashboard}>
+                <i className="bi bi-arrow-clockwise"></i> Refresh
+              </button>
+            </div>
+          </nav>
+
+          <div className="container-fluid px-4 py-4">
+            {/* Live Scan Notification */}
+            {activeStatus && activeStatus.status === 'SCANNING' && (
+              <div className="alert alert-info py-2 mb-4 d-flex justify-content-between align-items-center">
+                <span>
+                  <i className="bi bi-gear-wide-connected me-2"></i>
+                  <b>Scan Running ({activeStatus.progress_percentage}%):</b> {activeStatus.current_engine}
+                </span>
+                <div className="spinner-border spinner-border-sm text-info" role="status"></div>
+              </div>
+            )}
+
+            {/* Ingestion Console */}
+            <div className="card p-4 mb-4 shadow-sm">
+              <h6 className="fw-bold mb-3 text-info"><i className="bi bi-play-circle"></i> Launch New Security Scan</h6>
+              <ul className="nav nav-tabs mb-3 border-secondary">
+                <li className="nav-item">
+                  <button className={`nav-link ${activeTab === 'local' ? 'active' : ''}`} onClick={() => setActiveTab('local')}>Local Folder</button>
+                </li>
+                <li className="nav-item">
+                  <button className={`nav-link ${activeTab === 'upload' ? 'active' : ''}`} onClick={() => setActiveTab('upload')}>Upload ZIP / Code</button>
+                </li>
+                <li className="nav-item">
+                  <button className={`nav-link ${activeTab === 'github' ? 'active' : ''}`} onClick={() => setActiveTab('github')}>GitHub Repo</button>
+                </li>
+                <li className="nav-item">
+                  <button className={`nav-link ${activeTab === 'docker' ? 'active' : ''}`} onClick={() => setActiveTab('docker')}>Dockerfile / Compose</button>
+                </li>
+              </ul>
+
+              <form onSubmit={handleScanSubmit}>
+                {activeTab === 'local' && (
+                  <div className="row g-2 align-items-center">
+                    <div className="col-md-5">
+                      <input type="text" className="form-control bg-dark text-white border-secondary" placeholder="Local directory path (e.g. E:\Cdd\secret-leak-guard\bad-example)" value={localPath} onChange={e => setLocalPath(e.target.value)} />
+                    </div>
+                    <div className="col-md-3">
+                      <input type="text" className="form-control bg-dark text-white border-secondary" placeholder="Project Name" value={localProj} onChange={e => setLocalProj(e.target.value)} />
+                    </div>
+                    <div className="col-md-2 form-check ps-4">
+                      <input type="checkbox" className="form-check-input" id="histCheck" checked={scanHistory} onChange={e => setScanHistory(e.target.checked)} />
+                      <label className="form-check-label text-secondary small" htmlFor="histCheck">Scan Git History</label>
+                    </div>
+                    <div className="col-md-2">
+                      <button type="submit" disabled={loading} className="btn btn-info w-100 fw-bold">
+                        {loading ? 'Scanning...' : 'Scan Folder'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'upload' && (
+                  <div className="row g-2 align-items-center">
+                    <div className="col-md-5">
+                      <input type="file" className="form-control bg-dark text-white border-secondary" onChange={e => setUploadFile(e.target.files[0])} />
+                    </div>
+                    <div className="col-md-4">
+                      <input type="text" className="form-control bg-dark text-white border-secondary" placeholder="Project Name" value={uploadProj} onChange={e => setUploadProj(e.target.value)} />
+                    </div>
+                    <div className="col-md-3">
+                      <button type="submit" disabled={loading} className="btn btn-info w-100 fw-bold">
+                        {loading ? 'Uploading...' : 'Upload & Scan'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'github' && (
+                  <div className="row g-2 align-items-center">
+                    <div className="col-md-5">
+                      <input type="url" className="form-control bg-dark text-white border-secondary" placeholder="https://github.com/org/repo" value={githubUrl} onChange={e => setGithubUrl(e.target.value)} />
+                    </div>
+                    <div className="col-md-3">
+                      <input type="text" className="form-control bg-dark text-white border-secondary" placeholder="Branch (default main)" value={githubBranch} onChange={e => setGithubBranch(e.target.value)} />
+                    </div>
+                    <div className="col-md-2 form-check ps-4">
+                      <input type="checkbox" className="form-check-input" id="gitHistCheck" checked={scanHistory} onChange={e => setScanHistory(e.target.checked)} />
+                      <label className="form-check-label text-secondary small" htmlFor="gitHistCheck">Scan History</label>
+                    </div>
+                    <div className="col-md-2">
+                      <button type="submit" disabled={loading} className="btn btn-info w-100 fw-bold">
+                        {loading ? 'Cloning...' : 'Clone & Scan'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'docker' && (
+                  <div>
+                    <textarea rows="4" className="form-control bg-dark text-white border-secondary mb-2" placeholder="Paste Dockerfile or docker-compose.yml content..." value={dockerContent} onChange={e => setDockerContent(e.target.value)}></textarea>
+                    <button type="submit" disabled={loading} className="btn btn-info fw-bold">
+                      {loading ? 'Scanning...' : 'Scan Dockerfile'}
+                    </button>
+                  </div>
+                )}
+              </form>
+
+              {alertMsg && (
+                <div className={`alert alert-${alertMsg.type} mt-3 mb-0 py-2 small`}>
+                  {alertMsg.text}
+                </div>
+              )}
+            </div>
+
+            {/* KPI Metric Cards */}
+            <div className="row g-3 mb-4">
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">Projects Scanned</small>
+                  <div className="fs-2 fw-bold text-white">{m.total_projects || 0}</div>
+                </div>
+              </div>
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">Total Findings</small>
+                  <div className="fs-2 fw-bold text-info">{m.total_findings || 0}</div>
+                </div>
+              </div>
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">Critical Issues</small>
+                  <div className="fs-2 fw-bold text-danger">{sev.critical || 0}</div>
+                </div>
+              </div>
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">High Severity</small>
+                  <div className="fs-2 fw-bold text-warning">{sev.high || 0}</div>
+                </div>
+              </div>
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">Exposed Secrets</small>
+                  <div className="fs-2 fw-bold text-warning">{cat.secrets || 0}</div>
+                </div>
+              </div>
+              <div className="col-md-2">
+                <div className="card p-3 text-center">
+                  <small className="text-secondary text-uppercase fw-semibold">Avg Risk Score</small>
+                  <div className="fs-2 fw-bold text-white">{m.average_risk_score || 0}/100</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Charts Row */}
+            <div className="row g-3 mb-4">
+              <div className="col-md-6">
+                <div className="card p-3 h-100">
+                  <h6 className="fw-bold mb-3"><i className="bi bi-pie-chart text-info me-2"></i>Severity Distribution</h6>
+                  <div style={{ height: '220px', position: 'relative' }}>
+                    <canvas ref={sevChartRef}></canvas>
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-6">
+                <div className="card p-3 h-100">
+                  <h6 className="fw-bold mb-3"><i className="bi bi-bar-chart text-info me-2"></i>Category Breakdown</h6>
+                  <div style={{ height: '220px', position: 'relative' }}>
+                    <canvas ref={catChartRef}></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Scans List and Findings View */}
+            <div className="row g-4 mb-4">
+              <div className="col-md-4">
+                <div className="card p-3 h-100">
+                  <h6 className="fw-bold mb-3 text-white"><i className="bi bi-clock-history text-info me-2"></i>Recent Scans</h6>
+                  <div className="list-group list-group-flush">
+                    {scans.length === 0 ? (
+                      <div className="text-secondary small py-3">No scans run yet.</div>
+                    ) : (
+                      scans.map(s => {
+                        const isSelected = selectedScan && selectedScan.scan_id === s.scan_id;
+                        const gradeColor = (s.security_grade === 'A+' || s.security_grade === 'A') ? 'success' : (s.security_grade === 'B' ? 'info' : (s.security_grade === 'C' ? 'warning' : 'danger'));
+                        return (
+                          <div
+                            key={s.scan_id}
+                            onClick={() => selectScan(s.scan_id)}
+                            className={`list-group-item list-group-item-action bg-dark text-white border-secondary mb-2 rounded p-3 clickable-row ${isSelected ? 'border-info border-2' : ''}`}
+                          >
+                            <div className="d-flex justify-content-between align-items-center">
+                              <span className="fw-bold">{s.project_name}</span>
+                              <span className={`badge bg-${gradeColor}`}>Grade {s.security_grade}</span>
+                            </div>
+                            <div className="d-flex justify-content-between small text-secondary mt-1">
+                              <span>{s.source_type}</span>
+                              <span>{s.summary ? s.summary.total_findings : 0} issues ({s.risk_score}/100)</span>
+                            </div>
+                            <div className="mt-2 d-flex gap-1" onClick={e => e.stopPropagation()}>
+                              <a href={`/api/v1/scans/${s.scan_id}/report/html`} target="_blank" className="btn btn-outline-info btn-sm py-0 px-2">HTML</a>
+                              <a href={`/api/v1/scans/${s.scan_id}/report/pdf`} className="btn btn-outline-danger btn-sm py-0 px-2">PDF</a>
+                              <a href={`/api/v1/scans/${s.scan_id}/report/json`} className="btn btn-outline-success btn-sm py-0 px-2">JSON</a>
+                              <a href={`/api/v1/scans/${s.scan_id}/report/sarif`} className="btn btn-outline-warning btn-sm py-0 px-2">SARIF</a>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-md-8">
+                <div className="card p-3">
+                  <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h6 className="fw-bold mb-0 text-white">
+                      <i className="bi bi-shield-exclamation text-warning me-2"></i>
+                      Findings for {selectedScan ? selectedScan.project_name : 'Selected Scan'} ({filteredFindings.length})
+                    </h6>
+                    <div className="d-flex gap-2">
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-dark text-white border-secondary"
+                        placeholder="Search findings, paths, or CWEs..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                      />
+                      <select
+                        className="form-select form-select-sm bg-dark text-white border-secondary"
+                        value={severityFilter}
+                        onChange={e => setSeverityFilter(e.target.value)}
+                      >
+                        <option value="ALL">All Severities</option>
+                        <option value="CRITICAL">Critical</option>
+                        <option value="HIGH">High</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="LOW">Low</option>
+                      </select>
+                      <select
+                        className="form-select form-select-sm bg-dark text-white border-secondary"
+                        value={categoryFilter}
+                        onChange={e => setCategoryFilter(e.target.value)}
+                      >
+                        <option value="ALL">All Categories</option>
+                        <option value="SECRET_LEAK">Secrets</option>
+                        <option value="SAST_VULNERABILITY">SAST</option>
+                        <option value="DEPENDENCY">Dependencies</option>
+                        <option value="DOCKER_SECURITY">Docker</option>
+                        <option value="GIT_HISTORY">Git History</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="table table-dark table-hover align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '100px' }}>Severity</th>
+                          <th>Vulnerability Title</th>
+                          <th>File Location</th>
+                          <th>Engine</th>
+                          <th>CWE / Ref</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredFindings.length === 0 ? (
+                          <tr><td colSpan="5" className="text-center text-muted py-4">No findings matching current filters.</td></tr>
+                        ) : (
+                          filteredFindings.map((f, i) => {
+                            const sevClass = 'badge-' + (f.severity || 'medium').toLowerCase();
+                            return (
+                              <tr key={f.finding_id || i} className="clickable-row" onClick={() => setModalFinding(f)}>
+                                <td><span className={`badge ${sevClass}`}>{f.severity}</span></td>
+                                <td>
+                                  <div className="fw-bold text-white">{f.title}</div>
+                                  <div className="text-secondary small">{f.description}</div>
+                                  {f.evidence_redacted && (
+                                    <pre className="code-evidence mt-1 mb-0">{f.evidence_redacted}</pre>
+                                  )}
+                                  {f.recommended_remediation && (
+                                    <div className="small text-info mt-1"><b>Fix:</b> {f.recommended_remediation}</div>
+                                  )}
+                                </td>
+                                <td><code>{f.file_path}:{f.line_number || 'N/A'}</code></td>
+                                <td><span className="badge bg-secondary">{f.engine}</span></td>
+                                <td><small className="text-muted">{f.cwe || 'N/A'}</small></td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Finding Detail Modal */}
+            {modalFinding && (
+              <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+                <div className="modal-dialog modal-lg modal-dialog-centered">
+                  <div className="modal-content bg-dark text-white border-secondary">
+                    <div className="modal-header border-secondary">
+                      <h5 className="modal-title fw-bold">
+                        <span className={`badge badge-${(modalFinding.severity || 'medium').toLowerCase()} me-2`}>
+                          {modalFinding.severity}
+                        </span>
+                        {modalFinding.title}
+                      </h5>
+                      <button type="button" className="btn-close btn-close-white" onClick={() => setModalFinding(null)}></button>
+                    </div>
+                    <div className="modal-body">
+                      <div className="row g-2 mb-3">
+                        <div className="col-md-6"><b>File:</b> <code>{modalFinding.file_path}:{modalFinding.line_number || 'N/A'}</code></div>
+                        <div className="col-md-6"><b>Engine:</b> {modalFinding.engine}</div>
+                        <div className="col-md-6"><b>Category:</b> {modalFinding.category}</div>
+                        <div className="col-md-6"><b>CWE:</b> {modalFinding.cwe || 'N/A'}</div>
+                      </div>
+                      <h6 className="fw-bold text-info">Description</h6>
+                      <p className="text-secondary">{modalFinding.description}</p>
+                      {modalFinding.evidence_redacted && (
+                        <div>
+                          <h6 className="fw-bold text-info">Redacted Evidence</h6>
+                          <pre className="code-evidence">{modalFinding.evidence_redacted}</pre>
+                        </div>
+                      )}
+                      {modalFinding.potential_impact && (
+                        <div>
+                          <h6 className="fw-bold text-danger">Potential Impact</h6>
+                          <p className="text-secondary">{modalFinding.potential_impact}</p>
+                        </div>
+                      )}
+                      {modalFinding.recommended_remediation && (
+                        <div>
+                          <h6 className="fw-bold text-success">Recommended Remediation</h6>
+                          <p className="text-secondary">{modalFinding.recommended_remediation}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="modal-footer border-secondary">
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setModalFinding(null)}>Close</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
