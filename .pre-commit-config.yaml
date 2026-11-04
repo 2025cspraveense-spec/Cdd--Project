@@ -1,0 +1,42 @@
+# ==============================================================================
+# PRE-COMMIT CONFIGURATION - SECRET LEAK GUARD
+# ==============================================================================
+# Blocks accidental commit of API keys, passwords, certificates, and tokens.
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Manual trigger across all files:
+#   pre-commit run --all-files
+# ==============================================================================
+
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  # Official Gitleaks hook scanning staged files prior to commit
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+        name: Gitleaks Secret Scanner (Shift-Left Guard)
+        description: Scans git diff for leaked secrets, credentials, and custom project tokens
+        entry: gitleaks protect --staged --verbose --redact --config=.gitleaks.toml
+        language: golang
+        pass_filenames: false
+
+  # Basic file hygiene and direct private key detection
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key
+        name: Detect Staged Private Keys
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: end-of-file-fixer
+      - id: trailing-whitespace

@@ -1,0 +1,12 @@
+# ==============================================================================
+# GITLEAKS BASELINE IGNORE FILE (.gitleaksignore)
+# ==============================================================================
+# Add cryptographic fingerprints of verified false positives or accepted legacy findings.
+# Gitleaks calculates the SHA256 of the finding: file:line:commit:rule
+#
+# Generate a new fingerprint:
+#   gitleaks detect --report-format json | jq -r '.[].Fingerprint' >> .gitleaksignore
+# ==============================================================================
+
+# Baseline approved test mock fingerprints:
+# 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b:bad-example/test_mock.py:12

@@ -1,0 +1,92 @@
+# ==============================================================================
+# GITLEAKS CONFIGURATION - SECRET LEAK GUARD (ENTERPRISE EDITION)
+# ==============================================================================
+# Detects: AWS, GitHub, DB credentials, high-entropy tokens, university tokens,
+# across .env, JSON, YAML, Python, shell scripts, and configuration files.
+# ==============================================================================
+
+title = "Secret Leak Guard Enterprise Gitleaks Rules"
+
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------------------
+# Rule 1: Custom Project API Token (Format: SLG_<32-40 alphanumeric>)
+# ------------------------------------------------------------------------------
+[[rules]]
+id = "slg-project-token"
+description = "Secret Leak Guard Internal Project API Token"
+regex = '''(?i)(slg|guard)[-_]?(?:api|auth|secret)?[-_]?(?:key|token)?[\s:=]+['"]?([a-zA-Z0-9_-]{32,40})['"]?'''
+secretGroup = 2
+entropy = 3.5
+keywords = ["slg", "guard"]
+
+# ------------------------------------------------------------------------------
+# Rule 2: College / Campus Authentication Token
+# Format: CAMPUS-YYYY-DEPT-XXXXXXXXXXXX
+# ------------------------------------------------------------------------------
+[[rules]]
+id = "college-campus-auth-token"
+description = "Campus University Student/Faculty Auth Token"
+regex = '''\b(CAMPUS|COLLEGE|UNIV)-[0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}\b'''
+keywords = ["CAMPUS", "COLLEGE", "UNIV"]
+
+# ------------------------------------------------------------------------------
+# Rule 3: Database Connection URI with Plaintext Password
+# ------------------------------------------------------------------------------
+[[rules]]
+id = "database-connection-uri-password"
+description = "Database URI with embedded plaintext password credentials"
+regex = '''(?i)(postgres|postgresql|mysql|mongodb|redis):\/\/[a-zA-Z0-9_.-]+:([^@\s\/]{4,})@[a-zA-Z0-9_.-]+'''
+secretGroup = 2
+keywords = ["postgres", "postgresql", "mysql", "mongodb", "redis"]
+
+# ------------------------------------------------------------------------------
+# Rule 4: Generic High-Entropy API Secret Key (Entropy >= 4.2)
+# Detects random secrets in .env, JSON, YAML, and Python configs
+# ------------------------------------------------------------------------------
+[[rules]]
+id = "generic-high-entropy-secret"
+description = "High-entropy API secret or private access token"
+regex = '''(?i)(?:api_key|apikey|secret_key|secretkey|auth_token|client_secret)[\s:=]+['"]?([a-zA-Z0-9_\-+/]{28,64})['"]?'''
+secretGroup = 1
+entropy = 4.2
+keywords = ["api_key", "apikey", "secret_key", "secretkey", "auth_token", "client_secret"]
+
+# ------------------------------------------------------------------------------
+# Rule 5: JWT Secret Key or Symmetric Encryption Token
+# ------------------------------------------------------------------------------
+[[rules]]
+id = "jwt-secret-symmetric-key"
+description = "Hardcoded JWT secret or symmetric encryption key"
+regex = '''(?i)(jwt_secret|signing_key|encryption_key)[\s:=]+['"]?([a-zA-Z0-9_!@#$%^&*-]{16,64})['"]?'''
+secretGroup = 2
+entropy = 3.8
+keywords = ["jwt_secret", "signing_key", "encryption_key"]
+
+# ------------------------------------------------------------------------------
+# Global Allowlist
+# Safely ignores baseline documentation, templates, and pre-commit config
+# ------------------------------------------------------------------------------
+[allowlist]
+description = "Global allowlist for documentation, templates, and baseline files"
+paths = [
+    '''good-example/.*''',
+    '''\.env\.example$''',
+    '''README\.md$''',
+    '''docs/.*''',
+    '''\.gitleaks\.toml$''',
+    '''\.gitleaksignore$''',
+    '''tests/.*''',
+    '''scripts/generate_dashboard\.py$''',
+    '''scripts/verify_demo\.py$'''
+]
+
+stopwords = [
+    "your_aws_access_key_id_here",
+    "your_aws_secret_access_key_here",
+    "your_github_personal_access_token_here",
+    "your_slg_project_api_token_here",
+    "replace_with_db_password",
+    "CAMPUS-2024-ENGG-000000000000"
+]

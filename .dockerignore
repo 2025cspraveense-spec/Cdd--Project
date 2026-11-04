@@ -1,8 +1,40 @@
-# Git repository data
+# Git repository data (avoids leaking git history into image layers)
 .git
 .gitignore
 
-# Environment files
+# Environment files and credentials (CRITICAL: Never bake into Docker images)
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.pfx
+secrets/
+
+# Bad example test fixtures (demonstration files with fake secrets)
+bad-example/
+
+# CI/CD and workflows
+.github/
+.pre-commit-config.yaml
+.gitleaks.toml
+
+# Local cache & virtual environments
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv/
+env/
+
+# Reports and test artifacts
+reports/
+tests/
+*.log
+trivy-secret-report.json
+gitleaks-report.json
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
