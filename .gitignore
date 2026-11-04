@@ -3,9 +3,40 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+!frontend/build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
 # Virtual environments
 venv/
 .venv/
+ENV/
+env/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Secrets and Sensitive Environment Files (CRITICAL - SHIFT LEFT DEFENSE)
 .env
@@ -15,6 +46,9 @@ secrets/
 *.pem
 *.key
 *.pfx
+*.cert
+id_rsa
+id_rsa.pub
 
 # Test reports and temporary scan artifacts
 reports/*.json
