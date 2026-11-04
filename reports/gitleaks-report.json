@@ -1,0 +1,54 @@
+[
+  {
+    "Description": "AWS Access Key ID",
+    "StartLine": 17,
+    "EndLine": 17,
+    "StartColumn": 1,
+    "EndColumn": 40,
+    "Match": "Line 17: AWS Access Key ID detected",
+    "Secret": "REDACTED_MOCK_SECRET",
+    "File": "bad-example/leaked_secrets.py",
+    "RuleID": "aws-access-token",
+    "Commit": "test-commit-sha12345",
+    "Author": "developer@example.com"
+  },
+  {
+    "Description": "Database URI with Plaintext Password",
+    "StartLine": 22,
+    "EndLine": 22,
+    "StartColumn": 1,
+    "EndColumn": 40,
+    "Match": "Line 22: Database URI with Plaintext Password detected",
+    "Secret": "REDACTED_MOCK_SECRET",
+    "File": "bad-example/leaked_secrets.py",
+    "RuleID": "database-connection-uri-password",
+    "Commit": "test-commit-sha12345",
+    "Author": "developer@example.com"
+  },
+  {
+    "Description": "GitHub Personal Access Token",
+    "StartLine": 26,
+    "EndLine": 26,
+    "StartColumn": 1,
+    "EndColumn": 40,
+    "Match": "Line 26: GitHub Personal Access Token detected",
+    "Secret": "REDACTED_MOCK_SECRET",
+    "File": "bad-example/leaked_secrets.py",
+    "RuleID": "github-pat",
+    "Commit": "test-commit-sha12345",
+    "Author": "developer@example.com"
+  },
+  {
+    "Description": "Campus University Student/Faculty Auth Token",
+    "StartLine": 34,
+    "EndLine": 34,
+    "StartColumn": 1,
+    "EndColumn": 40,
+    "Match": "Line 34: College / Campus Student/Faculty Token detected",
+    "Secret": "REDACTED_MOCK_SECRET",
+    "File": "bad-example/leaked_secrets.py",
+    "RuleID": "college-campus-auth-token",
+    "Commit": "test-commit-sha12345",
+    "Author": "developer@example.com"
+  }
+]
